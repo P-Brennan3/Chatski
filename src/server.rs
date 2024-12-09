@@ -26,16 +26,15 @@ async fn main() {
         let rx = tx.subscribe();
         
         // spawn new task to handle this client
-        tokio::spawn(handle_connection(socket, tx, rx, addr));
+        tokio::spawn(handle_connection(socket, tx, rx));
     }
 }
 
 // function to handle each client connection
 async fn handle_connection(
     stream: TcpStream,
-    tx: broadcast::Sender<(String, std::net::SocketAddr)>,  // to send messages
-    mut rx: broadcast::Receiver<(String, std::net::SocketAddr)>,  // to receive messages
-    addr: std::net::SocketAddr,  // Client's address
+    tx: broadcast::Sender<(String, String)>,  // to send messages
+    mut rx: broadcast::Receiver<(String, String)>,  // to receive messages
 ) {
     // split connection into read and write parts
     let (reader, writer) = stream.into_split();
@@ -47,9 +46,9 @@ async fn handle_connection(
     tokio::spawn(async move {
         //  this loop runs indefinitely
         // continuously receiving messages from broadcast channel and writing to client stream
-        while let Ok((msg, from_addr)) = rx.recv().await {
+        while let Ok((msg, username)) = rx.recv().await {
             // Format and send message to client
-          writer.write_all(format!("{}: {}\n", from_addr, msg).as_bytes()).await.unwrap();  
+          writer.write_all(format!("{}: {}\n", username, msg).as_bytes()).await.unwrap();  
         }
     });
 
@@ -58,9 +57,9 @@ async fn handle_connection(
     //   * the client disconnects (which would make next_line() return None)
     //   * there's an error (which would panic due to the unwrap)
     while let Some(line) = reader.next_line().await.unwrap() {
-        println!("Got message from {}: {}", addr, line);
-        // send message to broadcast channel along with sender's address 
-        // so that other connect clients will receive it (via the task above -> tx.recv())
-        tx.send((line, addr)).unwrap();
+        if let Some((username, message)) = line.split_once(':') {
+            println!("Got message from {}: {}", username, message);
+            let _ = tx.send((message.to_string(), username.to_string()));
+        }
     }
 }

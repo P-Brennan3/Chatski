@@ -3,9 +3,13 @@ use tokio::{
     net::TcpStream,
 };
 use std::io::{self, Write};
+use std::fs;
 
 #[tokio::main]
 async fn main() {
+
+    let username = get_username();
+
     let stream = TcpStream::connect("127.0.0.1:4999").await.unwrap();
     let (reader, writer) = stream.into_split();
 
@@ -29,7 +33,7 @@ async fn main() {
             io::stdout().flush().unwrap();
             let mut input = String::new();
             io::stdin().read_line(&mut input).unwrap();
-            writer.write_all(input.trim().as_bytes()).await.unwrap();
+            writer.write_all(format!("{}:{}\n", username, input.trim()).as_bytes()).await.unwrap();
             writer.write_all(b"\n").await.unwrap();   
 
 
@@ -39,10 +43,23 @@ async fn main() {
             io::stdout().flush().unwrap();
         }
     });
-
     // wait for either task to finish (like if server disconnects)
     tokio::select! {
         _ = receive_task => println!("Receive task ended"),
         _ = send_task => println!("Send task ended"),
+    }
+}
+
+fn get_username() -> String {
+    match fs::read_to_string("chatski.config") {
+        Ok(contents) => {
+            for line in contents.lines() {
+                if let Some(username) = line.strip_prefix("username = ") {
+                    return username.trim_matches('"').to_string();
+                }
+            }
+            "Anonymous".to_string()
+        }
+        Err(_) => "Anonymous".to_string()
     }
 }
